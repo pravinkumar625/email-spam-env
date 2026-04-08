@@ -1,58 +1,101 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-import random
+import os
+import requests
+from openai import OpenAI
 
-app = FastAPI()
+print("[START]")
 
-emails = [
-    {"text": "Win a free iPhone now!", "label": 1},
-    {"text": "Meeting at 10am tomorrow", "label": 0},
-    {"text": "Congratulations! You won a lottery", "label": 1},
-    {"text": "Project deadline extended", "label": 0},
-]
+# ---------------- ENV (MUST USE EXACTLY THESE) ----------------
+API_BASE_URL = os.environ.get("API_BASE_URL")
+API_KEY = os.environ.get("API_KEY")
 
-state_data = {}
+print("API_BASE_URL:", API_BASE_URL)
+print("API_KEY exists:", bool(API_KEY))
 
-class Action(BaseModel):
-    action: int  # 0 = not spam, 1 = spam
+# ---------------- VALIDATE ENV ----------------
+if not API_BASE_URL or not API_KEY:
+    print("❌ Missing API env variables")
+    raise Exception("API_BASE_URL and API_KEY are required")
 
-@app.post("/reset")
-def reset():
-    global state_data
-    email = random.choice(emails)
+# ---------------- OPENAI CLIENT (IMPORTANT) ----------------
+client = OpenAI(
+    base_url=API_BASE_URL,
+    api_key=API_KEY
+)
 
-    state_data = {
-        "email": email["text"],
-        "label": email["label"],
-        "step": 0,
-        "total_reward": 0
-    }
+# ---------------- BASE URL ----------------
+BASE_URL = API_BASE_URL
 
-    return {"state": state_data}
+# ---------------- RESET ----------------
+r = requests.post(f"{BASE_URL}/reset")
+data = r.json()
 
-@app.post("/step")
-def step(action: Action):
-    global state_data
+total_reward = 0
 
-    correct = state_data["label"]
-    reward = 1.0 if action.action == correct else 0.0
+# ---------------- LOOP ----------------
+for step in range(3):
 
-    state_data["step"] += 1
-    state_data["total_reward"] += reward
+    state = data.get("state", {})
+    email_text = state.get("email", "")
 
-    done = state_data["step"] >= 3
+    print(f"\n[STEP {step}] Email:", email_text)
 
-    return {
-        "state": state_data,
-        "reward": reward,
-        "done": done
-    }
+    action = 0
 
-@app.get("/state")
-def state():
-    return state_data
+    # ---------------- LLM CALL (MANDATORY FOR PASSING) ----------------
+    try:
+        print("🔵 Making LLM call...")
 
-# ✅ ADD THIS
-@app.get("/")
-def root():
-    return {"message": "Email Spam OpenEnv is running"}
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"""
+Classify this email as spam (1) or not spam (0).
+
+Email:
+{email_text}
+
+Respond ONLY with 0 or 1.
+"""
+                }
+            ],
+            max_tokens=5
+        )
+
+        result = response.choices[0].message.content.strip()
+        print("LLM RAW OUTPUT:", result)
+
+        action = 1 if "1" in result else 0
+
+    except Exception as e:
+        print("❌ LLM ERROR:", e)
+
+        # fallback ONLY if LLM fails
+        if "free" in email_text.lower() or "win" in email_text.lower():
+            action = 1
+        else:
+            action = 0
+
+    print("ACTION:", action)
+
+    # ---------------- STEP ----------------
+    r = requests.post(
+        f"{BASE_URL}/step",
+        json={"action": action}
+    )
+
+    res = r.json()
+
+    print("STEP RESPONSE:", res)
+
+    reward = res.get("reward", 0)
+    total_reward += reward
+
+    data = res
+
+    if res.get("done"):
+        break
+
+# ---------------- END ----------------
+print("\n[END] TOTAL REWARD:", total_reward)

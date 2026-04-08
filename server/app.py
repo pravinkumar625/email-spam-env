@@ -6,10 +6,14 @@ app = FastAPI()
 class ActionRequest(BaseModel):
     action: int
 
-state = {
-    "email": "win free money now",
-    "step": 0
-}
+# Initial state
+def get_initial_state():
+    return {
+        "email": "win free money now",
+        "step": 0
+    }
+
+state = get_initial_state()
 
 @app.get("/")
 def home():
@@ -18,20 +22,24 @@ def home():
 @app.post("/reset")
 def reset():
     global state
-    state = {
-        "email": "win free money now",
-        "step": 0
-    }
+    state = get_initial_state()
     return {"state": state}
 
 @app.post("/step")
 def step(req: ActionRequest):
     global state
 
+    # Reward logic
     reward = 1 if req.action == 1 else 0
 
+    # Update state safely
     state["step"] += 1
-    state["email"] = "normal message"
+
+    # Change email to simulate environment
+    if state["step"] % 2 == 0:
+        state["email"] = "win free money now"
+    else:
+        state["email"] = "normal message"
 
     return {
         "state": state,

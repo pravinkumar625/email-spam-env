@@ -1,103 +1,97 @@
 import os
 import requests
+from openai import OpenAI
+
+BASE_URL = os.getenv("API_BASE_URL")
+API_KEY = os.getenv("API_KEY")
 
 print("[START]")
-
-# ---------------- ENV ----------------
-API_BASE_URL = os.environ.get("API_BASE_URL")
-API_KEY = os.environ.get("API_KEY")
-
-print("API_BASE_URL:", API_BASE_URL)
+print("API_BASE_URL:", BASE_URL)
 print("API_KEY exists:", bool(API_KEY))
 
-# ---------------- BASE URL ----------------
-BASE_URL = API_BASE_URL if API_BASE_URL else "http://localhost:7860"
+# DO NOT block execution if missing locally
+client = None
 
-# ---------------- SAFE LLM CALL ----------------
-def try_llm(email_text):
-    if not API_BASE_URL or not API_KEY:
-        print("⚠️ Skipping LLM (env not ready)")
-        return None
-
-    try:
-        from openai import OpenAI
-
+try:
+    if BASE_URL and API_KEY:
         client = OpenAI(
-            base_url=API_BASE_URL,
+            base_url=BASE_URL,
             api_key=API_KEY
         )
+        print("[INFO] LLM client initialized")
+    else:
+        print("[WARN] Running without LLM (waiting for validator injection)")
+except Exception as e:
+    print("[ERROR] Failed to initialize client:", e)
 
+
+def get_llm_action(email_text: str) -> int:
+    """
+    MUST use LLM when available.
+    Never skip if client exists.
+    """
+
+    if not client:
+        return 0  # fallback only if LLM truly unavailable
+
+    try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
+                    "role": "system",
+                    "content": "Classify email: 1 = spam, 0 = not spam"
+                },
+                {
                     "role": "user",
-                    "content": f"""
-Classify email as spam (1) or not spam (0).
-
-Email:
-{email_text}
-
-Respond ONLY with 0 or 1.
-"""
+                    "content": email_text
                 }
-            ],
-            max_tokens=5
+            ]
         )
 
-        return response.choices[0].message.content.strip()
+        result = response.choices[0].message.content.strip()
+
+        return int(result)
 
     except Exception as e:
-        print("LLM ERROR:", e)
-        return None
+        print("[ERROR] LLM call failed:", e)
+        return 0
 
-# ---------------- RESET ----------------
-try:
-    r = requests.post(f"{BASE_URL}/reset", timeout=10)
-    data = r.json()
-except:
-    data = {}
 
-total_reward = 0
+def main():
+    total_reward = 0
 
-# ---------------- LOOP ----------------
-for step in range(3):
+    for step in range(3):
+        print(f"\n[STEP {step}]")
 
-    print(f"\n[STEP {step}]")
+        try:
+            r = requests.post("http://localhost:7860/reset")
+            data = r.json()
 
-    email_text = data.get("state", {}).get("email", "")
-    print("Email:", email_text)
+            email_text = data["state"]["email"]
+            print("Email:", email_text)
 
-    # -------- LLM FIRST --------
-    result = try_llm(email_text)
+            action = get_llm_action(email_text)
 
-    if result is not None:
-        print("LLM RESULT:", result)
-        action = 1 if "1" in result else 0
-    else:
-        # fallback ONLY if LLM fails
-        print("⚠️ Using fallback")
-        action = 1 if ("free" in email_text.lower() or "win" in email_text.lower()) else 0
+            print("ACTION:", action)
 
-    print("ACTION:", action)
+            r = requests.post(
+                "http://localhost:7860/step",
+                json={"action": action}
+            )
 
-    try:
-        res = requests.post(
-            f"{BASE_URL}/step",
-            json={"action": action},
-            timeout=10
-        ).json()
-    except:
-        res = {}
+            data = r.json()
 
-    reward = res.get("reward", 0)
-    total_reward += reward
+            reward = data.get("reward", 0)
+            total_reward += reward
 
-    print("REWARD:", reward)
+            print("REWARD:", reward)
 
-    data = res
+        except Exception as e:
+            print("❌ Step failed:", e)
 
-    if res.get("done"):
-        break
+    print("\n[END] TOTAL REWARD:", total_reward)
 
-print("\n[END] TOTAL REWARD:", total_reward)
+
+if __name__ == "__main__":
+    main()

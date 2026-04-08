@@ -1,67 +1,62 @@
-import os
 import requests
-from openai import OpenAI
-
-print("[START]")
+import os
 
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 
-client = OpenAI(
-    base_url=os.environ["API_BASE_URL"],
-    api_key=os.environ["API_KEY"]
-)
-
-def get_action(email_text):
-    response = client.chat.completions.create(
-        model="openai/gpt-4o-mini",  # safer for proxy
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a spam classifier. Respond ONLY with 0 or 1."
-            },
-            {
-                "role": "user",
-                "content": email_text
-            }
-        ]
-    )
-
-    result = response.choices[0].message.content.strip()
-    print("LLM RAW:", result)
-
-    if result == "1":
-        return 1
-    return 0
-
 
 def main():
+    print("[START] Inference running...", flush=True)
+
+    try:
+        r = requests.post(f"{BASE_URL}/reset")
+        data = r.json()
+    except Exception as e:
+        print("❌ Failed to connect to API:", e, flush=True)
+        return
+
     total_reward = 0
 
     for step in range(3):
-        print(f"\n[STEP {step}]")
+        # 🔍 DEBUG: Print full response to understand structure
+        print("DEBUG RESPONSE:", data, flush=True)
 
-        r = requests.post(f"{BASE_URL}/reset")
-        data = r.json()
-
-        email = data["state"]["email"]
-        print("Email:", email)
-
-        action = get_action(email)
-        print("ACTION:", action)
-
-        r = requests.post(
-            f"{BASE_URL}/step",
-            json={"action": action}
+        # ✅ SAFE extraction (prevents KeyError)
+        email = (
+            data.get("state", {}).get("email")
+            or data.get("email")
+            or data.get("obs", {}).get("email")
+            or ""
         )
 
-        result = r.json()
-        reward = result.get("reward", 0)
+        print(f"Extracted email: {email}", flush=True)
 
-        print("REWARD:", reward)
+        # Simple rule-based spam detection
+        if "win" in email.lower() or "free" in email.lower():
+            action = "spam"
+        else:
+            action = "ham"
+
+        try:
+            response = requests.post(
+                f"{BASE_URL}/step",
+                json={"action": action}
+            )
+            data = response.json()
+        except Exception as e:
+            print("❌ Step error:", e, flush=True)
+            break
+
+        reward = data.get("reward", 0)
         total_reward += reward
 
-    print("\nTOTAL REWARD:", total_reward)
+        print(f"Step {step+1} -> action={action}, reward={reward}", flush=True)
+
+        if data.get("done", False):
+            break
+
+    print("🏁 Total Reward:", total_reward, flush=True)
 
 
+# ✅ REQUIRED ENTRY POINT (FIXES VALIDATION ERROR)
 if __name__ == "__main__":
     main()

@@ -3,14 +3,17 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-# Simple environment for validation
+class ActionRequest(BaseModel):
+    action: int
+
 state = {
     "email": "win free money now",
     "step": 0
 }
 
-class ActionRequest(BaseModel):
-    action: int
+@app.get("/")
+def home():
+    return {"status": "running"}
 
 @app.post("/reset")
 def reset():

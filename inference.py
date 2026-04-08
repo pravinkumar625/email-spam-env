@@ -3,34 +3,30 @@ import requests
 from openai import OpenAI
 
 print("[START]")
+
 BASE_URL = os.getenv("API_BASE_URL")
 API_KEY = os.getenv("API_KEY")
 
 print("API_BASE_URL:", BASE_URL)
 print("API_KEY exists:", bool(API_KEY))
 
-# ❗ DO NOT SKIP — always attempt to create client
+# Initialize client ONLY if env exists
 client = None
-
 if BASE_URL and API_KEY:
-    try:
-        client = OpenAI(
-            base_url=BASE_URL,
-            api_key=API_KEY
-        )
-        print("[INFO] LLM client ready")
-    except Exception as e:
-        print("[ERROR] Client init failed:", e)
+    client = OpenAI(
+        base_url=BASE_URL,
+        api_key=API_KEY
+    )
+    print("[INFO] LLM client initialized")
 
 
 def get_action(email_text):
-    # ❗ MUST TRY LLM FIRST
     if client:
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "Return 0 or 1 only"},
+                    {"role": "system", "content": "Return only 0 or 1"},
                     {"role": "user", "content": email_text}
                 ]
             )
@@ -38,9 +34,8 @@ def get_action(email_text):
             return int(response.choices[0].message.content.strip())
 
         except Exception as e:
-            print("[ERROR] LLM call failed:", e)
+            print("[ERROR] LLM failed:", e)
 
-    # ❗ fallback ONLY if LLM fails
     return 0
 
 

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import random
+import uvicorn
 
 app = FastAPI()
 
@@ -40,3 +41,9 @@ def state():
 @app.get("/")
 def root():
     return {"message": "Email Spam OpenEnv is running"}
+
+def main():
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
+if __name__ == "__main__":
+    main()

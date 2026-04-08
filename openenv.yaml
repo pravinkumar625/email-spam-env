@@ -1,0 +1,20 @@
+name: email-spam-env
+version: 1.0
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+
+tasks:
+  - name: easy
+    description: classify simple spam
+    max_steps: 3
+
+  - name: medium
+    description: classify mixed emails
+    max_steps: 5
+
+  - name: hard
+    description: classify tricky spam
+    max_steps: 7

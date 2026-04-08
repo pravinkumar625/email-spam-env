@@ -1,22 +1,28 @@
 import requests
 import os
 
+# Use validator-provided API base OR local fallback
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 
 print("[START]")
 
-# -------- RESET ENV --------
+# ---------------- RESET ----------------
 try:
     r = requests.post(f"{BASE_URL}/reset", timeout=10)
-    r.raise_for_status()
+
+    # Fail fast if HTTP error
+    if r.status_code != 200:
+        raise ValueError(f"Reset failed: HTTP {r.status_code}")
+
     data = r.json()
+
 except Exception as e:
     print("Reset failed:", e)
     raise
 
 total_reward = 0
 
-# Spam detection keywords
+# ---------------- SPAM LOGIC ----------------
 spam_keywords = [
     "win", "free", "lottery", "prize",
     "offer", "urgent", "claim", "congratulations"
@@ -24,40 +30,44 @@ spam_keywords = [
 
 for step in range(3):
 
-    # -------- SAFE STATE HANDLING --------
+    # -------- SAFE STATE ACCESS --------
     state = data.get("state", {})
 
     email_text = state.get("email")
 
     if not email_text:
-        print("Invalid response (missing email):", data)
+        print("Invalid response received:", data)
         raise ValueError("Email not found in state")
 
-    # -------- SIMPLE SPAM LOGIC --------
+    # -------- DECISION --------
     if any(word in email_text.lower() for word in spam_keywords):
-        action = {"action": 1}
+        action = {"action": 1}   # spam
     else:
-        action = {"action": 0}
+        action = {"action": 0}   # not spam
 
-    # -------- STEP REQUEST --------
+    # -------- STEP CALL --------
     try:
         r = requests.post(f"{BASE_URL}/step", json=action, timeout=10)
-        r.raise_for_status()
+
+        if r.status_code != 200:
+            raise ValueError(f"Step failed: HTTP {r.status_code}")
+
         res = r.json()
+
     except Exception as e:
         print("Step failed:", e)
         raise
 
-    # -------- SAFE REWARD HANDLING --------
+    # -------- REWARD --------
     reward = res.get("reward", 0)
     total_reward += reward
 
     print(f"[STEP] step={step} reward={reward}")
 
-    # Update state for next iteration
+    # Update state for next loop
     data = res
 
-    # Stop if environment ends
+    # Stop early if environment ends
     if res.get("done"):
         break
 

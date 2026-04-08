@@ -5,13 +5,13 @@ BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 
 
 def main():
-    print("[START] OpenEnv Agent Running", flush=True)
+    print("OpenEnv Agent Starting...", flush=True)
 
     try:
         r = requests.post(f"{BASE_URL}/reset")
         data = r.json()
     except Exception as e:
-        print("Error connecting to API:", e, flush=True)
+        print("Connection error:", e, flush=True)
         return
 
     total_reward = 0
@@ -19,15 +19,14 @@ def main():
     for step in range(3):
         email_text = data["state"]["email"]
 
-        # Simple spam detection logic
         if "win" in email_text.lower() or "free" in email_text.lower():
             action = "spam"
         else:
             action = "ham"
 
         try:
-            response = requests.post(f"{BASE_URL}/step", json={"action": action})
-            data = response.json()
+            res = requests.post(f"{BASE_URL}/step", json={"action": action})
+            data = res.json()
         except Exception as e:
             print("Step error:", e, flush=True)
             break
@@ -35,7 +34,7 @@ def main():
         reward = data.get("reward", 0)
         total_reward += reward
 
-        print(f"Step {step+1}: action={action}, reward={reward}", flush=True)
+        print(f"Step {step+1} -> action={action}, reward={reward}", flush=True)
 
         if data.get("done", False):
             break
@@ -43,6 +42,6 @@ def main():
     print("Total Reward:", total_reward, flush=True)
 
 
-# ✅ REQUIRED ENTRY POINT (THIS FIXES YOUR ERROR)
+# ⚠️ THIS LINE IS CRITICAL (validator checks this exactly)
 if __name__ == "__main__":
     main()

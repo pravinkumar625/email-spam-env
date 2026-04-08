@@ -1,0 +1,11 @@
+[project]
+name = "email-spam-env"
+version = "0.1.0"
+description = "Email spam classification OpenEnv environment"
+requires-python = ">=3.9"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic"
+]

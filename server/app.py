@@ -19,7 +19,7 @@ def main():
     for step in range(3):
         email_text = data["state"]["email"]
 
-        # simple rule-based logic
+        # Simple spam detection logic
         if "win" in email_text.lower() or "free" in email_text.lower():
             action = "spam"
         else:
@@ -43,6 +43,6 @@ def main():
     print("Total Reward:", total_reward, flush=True)
 
 
-# ✅ THIS PART IS CRITICAL (YOUR ERROR IS HERE)
+# ✅ REQUIRED ENTRY POINT (THIS FIXES YOUR ERROR)
 if __name__ == "__main__":
     main()

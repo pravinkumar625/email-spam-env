@@ -4,39 +4,38 @@ from openai import OpenAI
 
 print("[START]")
 
-BASE_URL = os.getenv("API_BASE_URL")
-API_KEY = os.getenv("API_KEY")
-
-print("API_BASE_URL:", BASE_URL)
-print("API_KEY exists:", bool(API_KEY))
-
-# Initialize client ONLY if env exists
-client = None
-if BASE_URL and API_KEY:
-    client = OpenAI(
-        base_url=BASE_URL,
-        api_key=API_KEY
-    )
-    print("[INFO] LLM client initialized")
-
+# 🔥 FORCE USING ENV (NO .get())
+client = OpenAI(
+    base_url=os.environ["API_BASE_URL"],
+    api_key=os.environ["API_KEY"]
+)
 
 def get_action(email_text):
-    if client:
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "Return only 0 or 1"},
-                    {"role": "user", "content": email_text}
-                ]
-            )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a spam classifier. Respond ONLY with 0 or 1."
+                },
+                {
+                    "role": "user",
+                    "content": email_text
+                }
+            ]
+        )
 
-            return int(response.choices[0].message.content.strip())
+        result = response.choices[0].message.content.strip()
 
-        except Exception as e:
-            print("[ERROR] LLM failed:", e)
+        # Ensure integer output
+        if "1" in result:
+            return 1
+        return 0
 
-    return 0
+    except Exception as e:
+        print("LLM ERROR:", e)
+        return 0
 
 
 def main():
@@ -67,9 +66,9 @@ def main():
             total_reward += reward
 
         except Exception as e:
-            print("❌ Step failed:", e)
+            print("ERROR:", e)
 
-    print("\n[END] TOTAL REWARD:", total_reward)
+    print("\nTOTAL REWARD:", total_reward)
 
 
 if __name__ == "__main__":

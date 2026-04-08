@@ -1,40 +1,55 @@
 import requests
 import os
 
+# Base URL of the environment API
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 
 
+def extract_email(data):
+    """
+    Safely extract email from different possible API response formats
+    """
+    if not isinstance(data, dict):
+        return ""
+
+    # Try multiple possible locations
+    return (
+        data.get("state", {}).get("email")
+        or data.get("email")
+        or data.get("obs", {}).get("email")
+        or data.get("observation", {}).get("email")
+        or ""
+    )
+
+
 def main():
-    print("[START] Inference Running...", flush=True)
+    print("[START] Inference running...", flush=True)
 
     try:
-        r = requests.post(f"{BASE_URL}/reset")
-        data = r.json()
+        response = requests.post(f"{BASE_URL}/reset")
+        data = response.json()
     except Exception as e:
-        print("❌ Failed to connect to API:", e, flush=True)
+        print("❌ ERROR: Cannot connect to API:", e, flush=True)
         return
 
     total_reward = 0
 
     for step in range(3):
-        # 🔍 DEBUG: Always print response (VERY IMPORTANT)
-        print("DEBUG RESPONSE:", data, flush=True)
+        # 🔍 DEBUG OUTPUT (VERY IMPORTANT)
+        print(f"\n--- STEP {step+1} ---", flush=True)
+        print("RAW DATA:", data, flush=True)
 
-        # ✅ SAFE extraction (prevents KeyError)
-        email = (
-            data.get("state", {}).get("email")
-            or data.get("email")
-            or data.get("obs", {}).get("email")
-            or ""
-        )
+        email = extract_email(data)
 
-        print(f"Extracted email: {email}", flush=True)
+        print("Extracted Email:", email, flush=True)
 
-        # Simple spam logic
-        if "win" in email.lower() or "free" in email.lower():
+        # Simple spam classifier logic
+        if any(word in email.lower() for word in ["win", "free", "offer"]):
             action = "spam"
         else:
             action = "ham"
+
+        print("Action:", action, flush=True)
 
         try:
             response = requests.post(
@@ -43,20 +58,21 @@ def main():
             )
             data = response.json()
         except Exception as e:
-            print("❌ Step error:", e, flush=True)
+            print("❌ ERROR during step:", e, flush=True)
             break
 
         reward = data.get("reward", 0)
         total_reward += reward
 
-        print(f"Step {step+1} → action={action}, reward={reward}", flush=True)
+        print("Reward:", reward, flush=True)
 
         if data.get("done", False):
+            print("✅ Episode finished early", flush=True)
             break
 
-    print("🏁 Total Reward:", total_reward, flush=True)
+    print("\n🏁 TOTAL REWARD:", total_reward, flush=True)
 
 
-# ⚠️ REQUIRED ENTRY POINT (FIXES YOUR VALIDATION ERROR)
+# ⚠️ REQUIRED ENTRY POINT (FIXES VALIDATION ERROR)
 if __name__ == "__main__":
     main()

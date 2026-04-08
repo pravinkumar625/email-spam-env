@@ -35,7 +35,6 @@ def step(action: Action):
     global state_data
 
     correct = state_data["label"]
-
     reward = 1.0 if action.action == correct else 0.0
 
     state_data["step"] += 1
@@ -52,3 +51,8 @@ def step(action: Action):
 @app.get("/state")
 def state():
     return state_data
+
+# ✅ ADD THIS
+@app.get("/")
+def root():
+    return {"message": "Email Spam OpenEnv is running"}

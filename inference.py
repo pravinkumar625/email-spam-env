@@ -5,7 +5,7 @@ BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 
 
 def main():
-    print("[START] Inference running...", flush=True)
+    print("[START] Inference Running...", flush=True)
 
     try:
         r = requests.post(f"{BASE_URL}/reset")
@@ -17,7 +17,7 @@ def main():
     total_reward = 0
 
     for step in range(3):
-        # 🔍 DEBUG: Print full response to understand structure
+        # 🔍 DEBUG: Always print response (VERY IMPORTANT)
         print("DEBUG RESPONSE:", data, flush=True)
 
         # ✅ SAFE extraction (prevents KeyError)
@@ -30,7 +30,7 @@ def main():
 
         print(f"Extracted email: {email}", flush=True)
 
-        # Simple rule-based spam detection
+        # Simple spam logic
         if "win" in email.lower() or "free" in email.lower():
             action = "spam"
         else:
@@ -49,7 +49,7 @@ def main():
         reward = data.get("reward", 0)
         total_reward += reward
 
-        print(f"Step {step+1} -> action={action}, reward={reward}", flush=True)
+        print(f"Step {step+1} → action={action}, reward={reward}", flush=True)
 
         if data.get("done", False):
             break
@@ -57,6 +57,6 @@ def main():
     print("🏁 Total Reward:", total_reward, flush=True)
 
 
-# ✅ REQUIRED ENTRY POINT (FIXES VALIDATION ERROR)
+# ⚠️ REQUIRED ENTRY POINT (FIXES YOUR VALIDATION ERROR)
 if __name__ == "__main__":
     main()

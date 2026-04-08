@@ -2,60 +2,46 @@ import os
 import requests
 from openai import OpenAI
 
+print("[START]")
 BASE_URL = os.getenv("API_BASE_URL")
 API_KEY = os.getenv("API_KEY")
 
-print("[START]")
 print("API_BASE_URL:", BASE_URL)
 print("API_KEY exists:", bool(API_KEY))
 
-# DO NOT block execution if missing locally
+# ❗ DO NOT SKIP — always attempt to create client
 client = None
 
-try:
-    if BASE_URL and API_KEY:
+if BASE_URL and API_KEY:
+    try:
         client = OpenAI(
             base_url=BASE_URL,
             api_key=API_KEY
         )
-        print("[INFO] LLM client initialized")
-    else:
-        print("[WARN] Running without LLM (waiting for validator injection)")
-except Exception as e:
-    print("[ERROR] Failed to initialize client:", e)
-
-
-def get_llm_action(email_text: str) -> int:
-    """
-    MUST use LLM when available.
-    Never skip if client exists.
-    """
-
-    if not client:
-        return 0  # fallback only if LLM truly unavailable
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Classify email: 1 = spam, 0 = not spam"
-                },
-                {
-                    "role": "user",
-                    "content": email_text
-                }
-            ]
-        )
-
-        result = response.choices[0].message.content.strip()
-
-        return int(result)
-
+        print("[INFO] LLM client ready")
     except Exception as e:
-        print("[ERROR] LLM call failed:", e)
-        return 0
+        print("[ERROR] Client init failed:", e)
+
+
+def get_action(email_text):
+    # ❗ MUST TRY LLM FIRST
+    if client:
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Return 0 or 1 only"},
+                    {"role": "user", "content": email_text}
+                ]
+            )
+
+            return int(response.choices[0].message.content.strip())
+
+        except Exception as e:
+            print("[ERROR] LLM call failed:", e)
+
+    # ❗ fallback ONLY if LLM fails
+    return 0
 
 
 def main():
@@ -68,11 +54,10 @@ def main():
             r = requests.post("http://localhost:7860/reset")
             data = r.json()
 
-            email_text = data["state"]["email"]
-            print("Email:", email_text)
+            email = data["state"]["email"]
+            print("Email:", email)
 
-            action = get_llm_action(email_text)
-
+            action = get_action(email)
             print("ACTION:", action)
 
             r = requests.post(
@@ -80,12 +65,11 @@ def main():
                 json={"action": action}
             )
 
-            data = r.json()
-
-            reward = data.get("reward", 0)
-            total_reward += reward
+            result = r.json()
+            reward = result.get("reward", 0)
 
             print("REWARD:", reward)
+            total_reward += reward
 
         except Exception as e:
             print("❌ Step failed:", e)

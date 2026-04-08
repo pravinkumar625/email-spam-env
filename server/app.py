@@ -1,47 +1,48 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+import requests
+import os
 
-app = FastAPI()
+BASE_URL = os.getenv("API_BASE_URL", "http://localhost:7860")
 
-class ActionRequest(BaseModel):
-    action: int
 
-# Initial state
-def get_initial_state():
-    return {
-        "email": "win free money now",
-        "step": 0
-    }
+def main():
+    print("[START] OpenEnv Agent Running")
 
-state = get_initial_state()
+    try:
+        r = requests.post(f"{BASE_URL}/reset")
+        data = r.json()
+    except Exception as e:
+        print("Error connecting to API:", e)
+        return
 
-@app.get("/")
-def home():
-    return {"status": "running"}
+    total_reward = 0
 
-@app.post("/reset")
-def reset():
-    global state
-    state = get_initial_state()
-    return {"state": state}
+    for step in range(3):
+        email_text = data["state"]["email"]
 
-@app.post("/step")
-def step(req: ActionRequest):
-    global state
+        # Simple rule-based agent (you can improve this)
+        if "win" in email_text.lower() or "free" in email_text.lower():
+            action = "spam"
+        else:
+            action = "ham"
 
-    # Reward logic
-    reward = 1 if req.action == 1 else 0
+        try:
+            response = requests.post(f"{BASE_URL}/step", json={"action": action})
+            data = response.json()
+        except Exception as e:
+            print("Step error:", e)
+            break
 
-    # Update state safely
-    state["step"] += 1
+        reward = data.get("reward", 0)
+        total_reward += reward
 
-    # Change email to simulate environment
-    if state["step"] % 2 == 0:
-        state["email"] = "win free money now"
-    else:
-        state["email"] = "normal message"
+        print(f"Step {step+1}: action={action}, reward={reward}")
 
-    return {
-        "state": state,
-        "reward": reward
-    }
+        if data.get("done", False):
+            break
+
+    print("Total Reward:", total_reward)
+
+
+# REQUIRED ENTRY POINT FOR DEPLOYMENT
+if __name__ == "__main__":
+    main()

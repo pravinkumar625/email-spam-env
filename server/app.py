@@ -236,11 +236,13 @@ def get_state():
 
 @app.get("/grade")
 def grade():
-    """Return final score in 0.0–1.0 range for the grader."""
+    """Return final score strictly in (0, 1) exclusive range for the grader."""
     if state["total"] == 0:
-        return {"score": 0.0, "correct": 0, "total": 0, "task": state["task"]}
+        return {"score": 0.01, "correct": 0, "total": 0, "task": state["task"]}
 
-    score = state["correct"] / state["total"]
+    raw_score = state["correct"] / state["total"]
+    # Clamp strictly to (0, 1) exclusive — validator rejects 0.0 and 1.0
+    score = max(0.01, min(raw_score, 0.99))
     return {
         "score":   round(score, 4),
         "correct": state["correct"],

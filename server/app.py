@@ -248,3 +248,16 @@ def grade():
         "task":    state["task"],
         "done":    state["done"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Entry point — required by openenv validate for multi-mode deployment
+# ---------------------------------------------------------------------------
+
+def main():
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=7860, reload=False)
+
+
+if __name__ == "__main__":
+    main()

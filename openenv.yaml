@@ -1,20 +1,69 @@
 name: email-spam-env
 version: 1.0
+description: >
+  An RL environment where an AI agent classifies emails as spam or ham.
+  The agent reads email content (subject, sender, body) and decides each step.
+  Graded on accuracy across a curated set of real-world-style emails.
+
+observation:
+  type: object
+  properties:
+    email:
+      type: string
+      description: The body text of the email
+    subject:
+      type: string
+      description: The subject line of the email
+    sender:
+      type: string
+      description: The sender's email address
+    step:
+      type: integer
+      description: Current step number in the episode
+    task:
+      type: string
+      description: Current task difficulty level
+
+action:
+  type: object
+  properties:
+    action:
+      type: integer
+      enum: [0, 1]
+      description: "0 = ham (legitimate), 1 = spam"
+
+reward:
+  type: number
+  range: [0.0, 1.0]
+  description: >
+    1.0 for correct classification, 0.0 for incorrect.
+    Final episode score = accuracy (correct / total).
 
 endpoints:
   reset: POST /reset
-  step: POST /step
-  state: GET /state
+  step:  POST /step
+  state: GET  /state
 
 tasks:
   - name: easy
-    description: classify simple spam
+    description: >
+      Classify 3 clearly spam or clearly legitimate emails.
+      Spam signals are obvious (ALL CAPS, free money, prize claims).
     max_steps: 3
 
   - name: medium
-    description: classify mixed emails
+    description: >
+      Classify 5 mixed emails including phishing attempts and borderline cases.
+      Requires attention to sender domain and email context.
     max_steps: 5
 
   - name: hard
-    description: classify tricky spam
+    description: >
+      Classify 7 tricky emails including sophisticated phishing, cold outreach,
+      and legitimate emails that look suspicious. Challenges frontier models.
     max_steps: 7
+
+baseline_scores:
+  easy:   0.67
+  medium: 0.60
+  hard:   0.43

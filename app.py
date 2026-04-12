@@ -93,13 +93,18 @@ state = {
     "task": "easy",
     "step": 0,
     "done": False,
-    "score": 0.0,
+    "score": 0.5,
     "correct": 0,
     "total": 0,
     "current_email_idx": 0,
     "emails": [],
     "max_steps": 3,
 }
+
+
+def clamp_score(value: float) -> float:
+    """Always return strictly between 0 and 1 exclusive, rounded to 4dp."""
+    return round(max(0.01, min(float(value), 0.99)), 4)
 
 
 def make_state(task: str) -> dict:
@@ -109,7 +114,7 @@ def make_state(task: str) -> dict:
         "task": task,
         "step": 0,
         "done": False,
-        "score": 0.0,
+        "score": 0.5,
         "correct": 0,
         "total": 0,
         "current_email_idx": 0,
@@ -130,11 +135,6 @@ def get_current_observation() -> dict:
             "task":    state["task"],
         }
     return {"email": "", "subject": "", "sender": "", "step": state["step"], "task": state["task"]}
-
-
-def clamp_score(score: float) -> float:
-    """Always return strictly between 0 and 1 exclusive."""
-    return round(max(0.01, min(score, 0.99)), 4)
 
 
 @app.get("/")
@@ -164,7 +164,8 @@ def step(req: Action):
     if state["done"]:
         return {
             "observation": get_current_observation(),
-            "reward": 0.0,
+            # Clamped: even "no reward" must be strictly > 0
+            "reward": 0.01,
             "done": True,
             "info": {"message": "Episode already done. Call /reset."},
         }
@@ -172,28 +173,35 @@ def step(req: Action):
     email = state["emails"][idx]
     true_label = email["label"]
     correct = (req.action == true_label)
-    reward  = 1.0 if correct else 0.0
+
+    # Raw reward is 1.0 or 0.0 — clamp both to stay strictly inside (0, 1)
+    raw_reward = 1.0 if correct else 0.0
+    reward = clamp_score(raw_reward)
+
     if correct:
         state["correct"] += 1
     state["total"] += 1
-    state["step"]  += 1
+    state["step"] += 1
     state["current_email_idx"] += 1
+
     done = (
         state["current_email_idx"] >= len(state["emails"])
         or state["step"] >= state["max_steps"]
     )
     state["done"] = done
     if done:
-        state["score"] = state["correct"] / state["total"] if state["total"] > 0 else 0.0
+        raw_score = state["correct"] / state["total"] if state["total"] > 0 else 0.5
+        state["score"] = clamp_score(raw_score)
+
     return {
         "observation": get_current_observation(),
-        "reward":      reward,
-        "done":        done,
+        "reward": reward,
+        "done": done,
         "info": {
-            "true_label":      true_label,
-            "correct":         correct,
-            "accuracy_so_far": round(state["correct"] / state["total"], 4),
-            "step":            state["step"],
+            "true_label": true_label,
+            "correct": correct,
+            "accuracy_so_far": clamp_score(state["correct"] / state["total"]),
+            "step": state["step"],
         },
     }
 
@@ -210,15 +218,16 @@ def get_state():
 def grade():
     """Return score strictly between 0 and 1 exclusive."""
     if state["total"] == 0:
+        # No steps taken yet — return midpoint (safe default)
         return {"score": 0.5, "correct": 0, "total": 0, "task": state["task"], "done": state["done"]}
     raw = state["correct"] / state["total"]
     score = clamp_score(raw)
     return {
-        "score":   score,
+        "score": score,
         "correct": state["correct"],
-        "total":   state["total"],
-        "task":    state["task"],
-        "done":    state["done"],
+        "total": state["total"],
+        "task": state["task"],
+        "done": state["done"],
     }
 
 

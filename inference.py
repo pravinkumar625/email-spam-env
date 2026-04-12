@@ -29,7 +29,7 @@ HF_TOKEN     = os.getenv("HF_TOKEN")
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
 
-# SPACE_URL points to THIS environment's FastAPI server — separate from LLM router.
+# SPACE_URL points to THIS environment's FastAPI server
 SPACE_URL = os.getenv("SPACE_URL", "http://localhost:7860").rstrip("/")
 
 BENCHMARK = "email-spam-env"
@@ -67,7 +67,6 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 
 
 def log_end(success: bool, steps: int, rewards: List[float]) -> None:
-    # IMPORTANT: spec says [END] has: success, steps, rewards — NO score field
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
@@ -98,7 +97,6 @@ def classify_email(observation: dict) -> int:
         digit = int(raw[0])
         return digit if digit in (0, 1) else 0
     except Exception:
-        # Keyword fallback when LLM is unavailable
         text = f"{observation.get('subject','')} {observation.get('email','')}".lower()
         spam_words = ["win", "free", "offer", "prize", "click here", "claim",
                       "urgent", "lottery", "selected", "reward",
@@ -113,21 +111,19 @@ def classify_email(observation: dict) -> int:
 def run_task(task_name: str) -> dict:
     rewards: List[float] = []
     steps   = 0
-    score   = 0.0
+    score   = 0.01  # default to 0.01 — never 0.0
     success = False
 
-    # [START] logged before anything can fail
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        # Reset environment
         try:
             r = requests.post(f"{SPACE_URL}/reset", json={"task": task_name}, timeout=30)
             r.raise_for_status()
             data = r.json()
         except Exception as e:
             print(f"[DEBUG] Reset failed for task={task_name}: {e}", flush=True)
-            return {"task": task_name, "score": 0.0, "steps": 0, "rewards": []}
+            return {"task": task_name, "score": 0.01, "steps": 0, "rewards": []}
 
         obs  = data.get("observation", {})
         done = False
@@ -160,15 +156,16 @@ def run_task(task_name: str) -> dict:
         # Fetch graded score from /grade endpoint
         try:
             g     = requests.get(f"{SPACE_URL}/grade", timeout=10).json()
-            score = float(g.get("score", 0.0))
+            score = float(g.get("score", 0.01))
         except Exception:
-            score = sum(rewards) / max(len(rewards), 1)
+            raw = sum(rewards) / max(len(rewards), 1)
+            score = max(0.01, min(raw, 0.99))
 
-        score   = min(max(score, 0.0), 1.0)
+        # CRITICAL: clamp strictly to (0, 1) exclusive — validator rejects 0.0 and 1.0
+        score   = max(0.01, min(score, 0.99))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
-        # [END] always emitted — spec format: no score= field
         log_end(success=success, steps=steps, rewards=rewards)
 
     return {"task": task_name, "score": score, "steps": steps, "rewards": rewards}

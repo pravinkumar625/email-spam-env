@@ -5,19 +5,11 @@ from typing import Optional, Literal
 
 app = FastAPI(title="Email Spam Classification OpenEnv")
 
-# ---------------------------------------------------------------------------
-# Typed Pydantic models (OpenEnv spec)
-# ---------------------------------------------------------------------------
-
 class ResetRequest(BaseModel):
     task: Optional[str] = "easy"
 
 class Action(BaseModel):
-    action: Literal[0, 1]   # 0 = ham, 1 = spam
-
-# ---------------------------------------------------------------------------
-# Email datasets per difficulty
-# ---------------------------------------------------------------------------
+    action: Literal[0, 1]
 
 TASKS = {
     "easy": {
@@ -97,10 +89,6 @@ TASKS = {
     }
 }
 
-# ---------------------------------------------------------------------------
-# Global state
-# ---------------------------------------------------------------------------
-
 state = {
     "task": "easy",
     "step": 0,
@@ -144,10 +132,6 @@ def get_current_observation() -> dict:
     return {"email": "", "subject": "", "sender": "", "step": state["step"], "task": state["task"]}
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
 @app.get("/")
 def root():
     return {"status": "ok", "env": "email-spam-env", "version": "1.0"}
@@ -156,16 +140,13 @@ def root():
 @app.post("/reset")
 def reset(req: ResetRequest = None, task: str = "easy"):
     global state
-
     resolved_task = "easy"
     if req is not None and req.task in TASKS:
         resolved_task = req.task
     elif task in TASKS:
         resolved_task = task
-
     state = make_state(resolved_task)
     obs = get_current_observation()
-
     return {
         "observation": obs,
         "state": {k: v for k, v in state.items() if k != "emails"},
@@ -175,7 +156,6 @@ def reset(req: ResetRequest = None, task: str = "easy"):
 @app.post("/step")
 def step(req: Action):
     global state
-
     if state["done"]:
         return {
             "observation": get_current_observation(),
@@ -183,29 +163,23 @@ def step(req: Action):
             "done": True,
             "info": {"message": "Episode already done. Call /reset."},
         }
-
     idx = state["current_email_idx"]
     email = state["emails"][idx]
     true_label = email["label"]
-
     correct = (req.action == true_label)
     reward  = 1.0 if correct else 0.0
-
     if correct:
         state["correct"] += 1
     state["total"] += 1
     state["step"]  += 1
     state["current_email_idx"] += 1
-
     done = (
         state["current_email_idx"] >= len(state["emails"])
         or state["step"] >= state["max_steps"]
     )
     state["done"] = done
-
     if done:
         state["score"] = state["correct"] / state["total"] if state["total"] > 0 else 0.0
-
     return {
         "observation": get_current_observation(),
         "reward":      reward,
@@ -229,16 +203,14 @@ def get_state():
 
 @app.get("/grade")
 def grade():
-    """Return final score in (0, 1) exclusive range for the grader."""
+    """Return final score strictly between 0 and 1 exclusive — (0.01, 0.99)."""
     if state["total"] == 0:
-        # Nothing attempted yet — return minimum non-zero score
         return {"score": 0.01, "correct": 0, "total": 0, "task": state["task"]}
 
     raw_score = state["correct"] / state["total"]
 
-    # The validator rejects exactly 0.0; clamp only the zero edge case.
-    # Perfect scores (1.0) are allowed — do NOT clamp the upper end.
-    score = max(raw_score, 0.01)
+    # Clamp strictly to (0, 1) exclusive — validator rejects both 0.0 AND 1.0
+    score = max(0.01, min(raw_score, 0.99))
 
     return {
         "score":   round(score, 4),
@@ -248,10 +220,6 @@ def grade():
         "done":    state["done"],
     }
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 def main():
     import uvicorn

@@ -65,9 +65,9 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+def log_end(success: bool, steps: int, rewards: List[float]) -> None:
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -126,8 +126,8 @@ def run_task(task_name: str) -> dict:
             data = r.json()
         except Exception as e:
             print(f"[DEBUG] Reset failed for task={task_name}: {e}", flush=True)
-            log_end(success=False, steps=0, score=0.5, rewards=[0.5])
-            return {"task": task_name, "score": 0.5, "steps": 0, "rewards": [0.5]}
+            log_end(success=False, steps=0, rewards=[])
+            return {"task": task_name, "score": 0.5, "steps": 0, "rewards": []}
 
         obs  = data.get("observation", {})
         done = False
@@ -168,7 +168,7 @@ def run_task(task_name: str) -> dict:
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
-        log_end(success=success, steps=steps, score=score, rewards=rewards)
+        log_end(success=success, steps=steps, rewards=rewards)
 
     return {"task": task_name, "score": score, "steps": steps, "rewards": rewards}
 

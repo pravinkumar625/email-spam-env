@@ -132,6 +132,11 @@ def get_current_observation() -> dict:
     return {"email": "", "subject": "", "sender": "", "step": state["step"], "task": state["task"]}
 
 
+def clamp_score(score: float) -> float:
+    """Clamp score strictly between 0 and 1 exclusive."""
+    return round(max(0.01, min(score, 0.99)), 4)
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "env": "email-spam-env", "version": "1.0"}
@@ -203,17 +208,19 @@ def get_state():
 
 @app.get("/grade")
 def grade():
-    """Return final score strictly between 0 and 1 exclusive — (0.01, 0.99)."""
+    """Return score strictly between 0 and 1 exclusive."""
     if state["total"] == 0:
-        return {"score": 0.01, "correct": 0, "total": 0, "task": state["task"]}
-
-    raw_score = state["correct"] / state["total"]
-
-    # Clamp strictly to (0, 1) exclusive — validator rejects both 0.0 AND 1.0
-    score = max(0.01, min(raw_score, 0.99))
-
+        return {
+            "score": 0.5,
+            "correct": 0,
+            "total": 0,
+            "task": state["task"],
+            "done": state["done"],
+        }
+    raw = state["correct"] / state["total"]
+    score = clamp_score(raw)
     return {
-        "score":   round(score, 4),
+        "score":   score,
         "correct": state["correct"],
         "total":   state["total"],
         "task":    state["task"],

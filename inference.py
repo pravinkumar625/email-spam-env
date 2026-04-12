@@ -2,18 +2,16 @@
 Inference Script — Email Spam Classification OpenEnv
 =====================================================
 MANDATORY environment variables:
-    API_BASE_URL   The API endpoint for the LLM (e.g. https://router.huggingface.co/v1)
-    MODEL_NAME     The model identifier to use for inference.
-    HF_TOKEN       Your Hugging Face / API key.
-    SPACE_URL      Base URL of THIS FastAPI environment server (e.g. http://localhost:7860)
-                   Defaults to http://localhost:7860 if not set.
+    API_BASE_URL   The API endpoint for the LLM (must have default)
+    MODEL_NAME     The model identifier (must have default)
+    HF_TOKEN       Your Hugging Face API token (mandatory, no default)
+    SPACE_URL      Base URL of THIS FastAPI environment server
+                   Defaults to http://localhost:7860
 
-STDOUT FORMAT (must match OpenEnv spec exactly):
+STDOUT FORMAT (OpenEnv spec):
     [START] task=<task_name> env=<benchmark> model=<model_name>
     [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
     [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
-
-NOTE: [END] does NOT include a score= field per spec.
 """
 
 import os
@@ -22,14 +20,16 @@ from typing import List, Optional
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# Environment variables (all with defaults except HF_TOKEN)
+# Environment variables
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN", "")
+HF_TOKEN     = os.getenv("HF_TOKEN")
+
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
 
 # SPACE_URL points to THIS environment's FastAPI server — separate from LLM router.
-# On HF Spaces the hackathon runner sets this; locally default to localhost.
 SPACE_URL = os.getenv("SPACE_URL", "http://localhost:7860").rstrip("/")
 
 BENCHMARK = "email-spam-env"
@@ -38,7 +38,7 @@ SUCCESS_SCORE_THRESHOLD = 0.5
 
 client = OpenAI(
     base_url=API_BASE_URL,
-    api_key=HF_TOKEN or "hf-no-key",
+    api_key=HF_TOKEN,
 )
 
 SYSTEM_PROMPT = """You are an expert email spam classifier.
@@ -100,14 +100,14 @@ def classify_email(observation: dict) -> int:
     except Exception:
         # Keyword fallback when LLM is unavailable
         text = f"{observation.get('subject','')} {observation.get('email','')}".lower()
-        spam_words = ["win", "free", "offer", "prize", "click here", "claim", "urgent",
-                      "lottery", "selected", "reward", "congratulations", "verify"]
+        spam_words = ["win", "free", "offer", "prize", "click here", "claim",
+                      "urgent", "lottery", "selected", "reward",
+                      "congratulations", "verify"]
         return 1 if any(w in text for w in spam_words) else 0
 
 
 # ---------------------------------------------------------------------------
 # Run a single task episode
-# [START] is emitted first; [END] is always emitted in finally block.
 # ---------------------------------------------------------------------------
 
 def run_task(task_name: str) -> dict:
@@ -157,7 +157,7 @@ def run_task(task_name: str) -> dict:
 
             log_step(step=steps, action=str(action), reward=reward, done=done, error=error_msg)
 
-        # Fetch graded score from /grade endpoint (for internal tracking only)
+        # Fetch graded score from /grade endpoint
         try:
             g     = requests.get(f"{SPACE_URL}/grade", timeout=10).json()
             score = float(g.get("score", 0.0))

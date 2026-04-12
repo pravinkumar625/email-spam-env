@@ -133,7 +133,7 @@ def get_current_observation() -> dict:
 
 
 def clamp_score(score: float) -> float:
-    """Clamp score strictly between 0 and 1 exclusive."""
+    """Always return strictly between 0 and 1 exclusive."""
     return round(max(0.01, min(score, 0.99)), 4)
 
 
@@ -210,13 +210,7 @@ def get_state():
 def grade():
     """Return score strictly between 0 and 1 exclusive."""
     if state["total"] == 0:
-        return {
-            "score": 0.5,
-            "correct": 0,
-            "total": 0,
-            "task": state["task"],
-            "done": state["done"],
-        }
+        return {"score": 0.5, "correct": 0, "total": 0, "task": state["task"], "done": state["done"]}
     raw = state["correct"] / state["total"]
     score = clamp_score(raw)
     return {

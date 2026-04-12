@@ -5,18 +5,15 @@ MANDATORY environment variables:
     API_BASE_URL   The API endpoint for the LLM (e.g. https://router.huggingface.co/v1)
     MODEL_NAME     The model identifier to use for inference.
     HF_TOKEN       Your Hugging Face / API key.
+    SPACE_URL      Base URL of THIS FastAPI environment server (e.g. http://localhost:7860)
+                   Defaults to http://localhost:7860 if not set.
 
-STDOUT FORMAT (must match exactly):
+STDOUT FORMAT (must match OpenEnv spec exactly):
     [START] task=<task_name> env=<benchmark> model=<model_name>
     [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
-    [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
+    [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
 
-Example output:
-    [START] task=easy env=email-spam-env model=Qwen/Qwen2.5-72B-Instruct
-    [STEP] step=1 action=1 reward=1.00 done=false error=null
-    [STEP] step=2 action=0 reward=1.00 done=false error=null
-    [STEP] step=3 action=1 reward=0.00 done=true error=null
-    [END] success=true steps=3 score=0.67 rewards=1.00,1.00,0.00
+NOTE: [END] does NOT include a score= field per spec.
 """
 
 import os
@@ -25,18 +22,15 @@ from typing import List, Optional
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# FIX 1: Derive SPACE_URL from API_BASE_URL — no custom ENV_BASE_URL needed.
-# The hackathon only injects API_BASE_URL, MODEL_NAME, HF_TOKEN.
-# API_BASE_URL points to the LLM (ends in /v1).
-# SPACE_URL points to THIS environment's FastAPI server (same host, no /v1).
+# Environment variables (all with defaults except HF_TOKEN)
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN     = os.getenv("HF_TOKEN", "")
 
-# Derive the env server URL: strip trailing /v1 if present, else use localhost
-_api = API_BASE_URL.rstrip("/")
-SPACE_URL = _api[:-3] if _api.endswith("/v1") else os.getenv("SPACE_URL", "http://localhost:7860")
+# SPACE_URL points to THIS environment's FastAPI server — separate from LLM router.
+# On HF Spaces the hackathon runner sets this; locally default to localhost.
+SPACE_URL = os.getenv("SPACE_URL", "http://localhost:7860").rstrip("/")
 
 BENCHMARK = "email-spam-env"
 TASKS = ["easy", "medium", "hard"]
@@ -72,9 +66,10 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+def log_end(success: bool, steps: int, rewards: List[float]) -> None:
+    # IMPORTANT: spec says [END] has: success, steps, rewards — NO score field
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -105,14 +100,14 @@ def classify_email(observation: dict) -> int:
     except Exception:
         # Keyword fallback when LLM is unavailable
         text = f"{observation.get('subject','')} {observation.get('email','')}".lower()
-        spam_words = ["win", "free", "offer", "prize", "click here", "claim", "urgent", "lottery", "selected"]
+        spam_words = ["win", "free", "offer", "prize", "click here", "claim", "urgent",
+                      "lottery", "selected", "reward", "congratulations", "verify"]
         return 1 if any(w in text for w in spam_words) else 0
 
 
 # ---------------------------------------------------------------------------
 # Run a single task episode
-# FIX 3: log_start emitted FIRST, before reset — so [START] always appears
-#         even if reset fails. [END] always emitted in finally block.
+# [START] is emitted first; [END] is always emitted in finally block.
 # ---------------------------------------------------------------------------
 
 def run_task(task_name: str) -> dict:
@@ -121,7 +116,7 @@ def run_task(task_name: str) -> dict:
     score   = 0.0
     success = False
 
-    # FIX 3: [START] logged before anything can fail
+    # [START] logged before anything can fail
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
     try:
@@ -162,7 +157,7 @@ def run_task(task_name: str) -> dict:
 
             log_step(step=steps, action=str(action), reward=reward, done=done, error=error_msg)
 
-        # Fetch graded score from /grade endpoint
+        # Fetch graded score from /grade endpoint (for internal tracking only)
         try:
             g     = requests.get(f"{SPACE_URL}/grade", timeout=10).json()
             score = float(g.get("score", 0.0))
@@ -173,8 +168,8 @@ def run_task(task_name: str) -> dict:
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
-        # FIX 3: [END] always emitted, even on exception
-        log_end(success=success, steps=steps, score=score, rewards=rewards)
+        # [END] always emitted — spec format: no score= field
+        log_end(success=success, steps=steps, rewards=rewards)
 
     return {"task": task_name, "score": score, "steps": steps, "rewards": rewards}
 

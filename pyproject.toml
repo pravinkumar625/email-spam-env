@@ -8,9 +8,9 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
-    "openenv-core>=0.2.0",
-    "requests"
+    "requests",
+    "openai>=1.0.0"
 ]
 
 [project.scripts]
-server = "server.app:main"
+server = "app:main"

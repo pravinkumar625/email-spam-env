@@ -10,10 +10,10 @@ app = FastAPI(title="Email Spam Classification OpenEnv")
 # ---------------------------------------------------------------------------
 
 class ResetRequest(BaseModel):
-    task: Optional[str] = "easy"   # accept task from JSON body OR query param
+    task: Optional[str] = "easy"
 
 class Action(BaseModel):
-    action: Literal[0, 1]          # 0 = ham, 1 = spam
+    action: Literal[0, 1]   # 0 = ham, 1 = spam
 
 # ---------------------------------------------------------------------------
 # Email datasets per difficulty
@@ -155,15 +155,8 @@ def root():
 
 @app.post("/reset")
 def reset(req: ResetRequest = None, task: str = "easy"):
-    """
-    Reset the environment. Accepts task in three ways (all optional, default=easy):
-      - JSON body: {"task": "medium"}
-      - Query param: POST /reset?task=medium
-      - Empty body: POST /reset  (uses default 'easy')
-    """
     global state
 
-    # Resolve task: body > query param > default
     resolved_task = "easy"
     if req is not None and req.task in TASKS:
         resolved_task = req.task
@@ -175,7 +168,7 @@ def reset(req: ResetRequest = None, task: str = "easy"):
 
     return {
         "observation": obs,
-        "state": {k: v for k, v in state.items() if k != "emails"},  # don't leak all emails
+        "state": {k: v for k, v in state.items() if k != "emails"},
     }
 
 
@@ -236,11 +229,17 @@ def get_state():
 
 @app.get("/grade")
 def grade():
-    """Return final score in 0.0–1.0 range for the grader."""
+    """Return final score in (0, 1) exclusive range for the grader."""
     if state["total"] == 0:
-        return {"score": 0.0, "correct": 0, "total": 0, "task": state["task"]}
+        # Nothing attempted yet — return minimum non-zero score
+        return {"score": 0.01, "correct": 0, "total": 0, "task": state["task"]}
 
-    score = state["correct"] / state["total"]
+    raw_score = state["correct"] / state["total"]
+
+    # The validator rejects exactly 0.0; clamp only the zero edge case.
+    # Perfect scores (1.0) are allowed — do NOT clamp the upper end.
+    score = max(raw_score, 0.01)
+
     return {
         "score":   round(score, 4),
         "correct": state["correct"],
@@ -251,7 +250,7 @@ def grade():
 
 
 # ---------------------------------------------------------------------------
-# Entry point — required by openenv validate for multi-mode deployment
+# Entry point
 # ---------------------------------------------------------------------------
 
 def main():

@@ -29,7 +29,6 @@ HF_TOKEN     = os.getenv("HF_TOKEN")
 if HF_TOKEN is None:
     raise ValueError("HF_TOKEN environment variable is required")
 
-# SPACE_URL points to THIS environment's FastAPI server
 SPACE_URL = os.getenv("SPACE_URL", "http://localhost:7860").rstrip("/")
 
 BENCHMARK = "email-spam-env"
@@ -53,7 +52,7 @@ No explanation. No punctuation. Just the digit 0 or 1."""
 
 
 # ---------------------------------------------------------------------------
-# Structured log helpers — exact format required by OpenEnv spec
+# Structured log helpers
 # ---------------------------------------------------------------------------
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -76,7 +75,6 @@ def log_end(success: bool, steps: int, rewards: List[float]) -> None:
 # ---------------------------------------------------------------------------
 
 def classify_email(observation: dict) -> int:
-    """Ask the LLM to classify an email. Returns 0 (ham) or 1 (spam)."""
     user_msg = (
         f"Subject: {observation.get('subject', 'N/A')}\n"
         f"Sender:  {observation.get('sender',  'N/A')}\n"
@@ -104,6 +102,11 @@ def classify_email(observation: dict) -> int:
         return 1 if any(w in text for w in spam_words) else 0
 
 
+def clamp(value: float) -> float:
+    """Clamp value strictly between 0 and 1 exclusive."""
+    return max(0.01, min(value, 0.99))
+
+
 # ---------------------------------------------------------------------------
 # Run a single task episode
 # ---------------------------------------------------------------------------
@@ -111,7 +114,7 @@ def classify_email(observation: dict) -> int:
 def run_task(task_name: str) -> dict:
     rewards: List[float] = []
     steps   = 0
-    score   = 0.01  # default to 0.01 — never 0.0
+    score   = 0.01
     success = False
 
     log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
@@ -123,7 +126,7 @@ def run_task(task_name: str) -> dict:
             data = r.json()
         except Exception as e:
             print(f"[DEBUG] Reset failed for task={task_name}: {e}", flush=True)
-            return {"task": task_name, "score": 0.01, "steps": 0, "rewards": []}
+            return {"task": task_name, "score": 0.01, "steps": 0, "rewards": [0.01]}
 
         obs  = data.get("observation", {})
         done = False
@@ -142,10 +145,10 @@ def run_task(task_name: str) -> dict:
                 result = r.json()
             except Exception as e:
                 error_msg = str(e)
-                log_step(step=steps + 1, action=str(action), reward=0.0, done=True, error=error_msg)
+                log_step(step=steps + 1, action=str(action), reward=0.01, done=True, error=error_msg)
                 break
 
-            reward = float(result.get("reward", 0.0))
+            reward = clamp(float(result.get("reward", 0.01)))
             done   = bool(result.get("done", True))
             obs    = result.get("observation", {})
             steps += 1
@@ -156,13 +159,11 @@ def run_task(task_name: str) -> dict:
         # Fetch graded score from /grade endpoint
         try:
             g     = requests.get(f"{SPACE_URL}/grade", timeout=10).json()
-            score = float(g.get("score", 0.01))
+            score = clamp(float(g.get("score", 0.01)))
         except Exception:
-            raw = sum(rewards) / max(len(rewards), 1)
-            score = max(0.01, min(raw, 0.99))
+            raw   = sum(rewards) / max(len(rewards), 1)
+            score = clamp(raw)
 
-        # CRITICAL: clamp strictly to (0, 1) exclusive — validator rejects 0.0 and 1.0
-        score   = max(0.01, min(score, 0.99))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     finally:
@@ -172,7 +173,7 @@ def run_task(task_name: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Main — run all tasks
+# Main
 # ---------------------------------------------------------------------------
 
 def main():
